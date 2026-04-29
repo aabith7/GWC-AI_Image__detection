@@ -4,24 +4,23 @@ import time
 import random
 import io
 import re
+import base64
 from PIL import Image
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from google import genai
-from google.genai import types
-from google.genai.errors import ServerError, ClientError
+from groq import Groq, APIError, RateLimitError
 import csv
 from datetime import datetime
 
 load_dotenv()
 
-API_KEY = os.getenv("GEMINI_API_KEY")
+API_KEY = os.getenv("GROQ_API_KEY")
 
 if not API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in .env file")
+    raise ValueError("GROQ_API_KEY not found in environment variables")
 
-client = genai.Client(api_key=API_KEY)
+client = Groq(api_key=API_KEY)
 
 app = FastAPI(title="AI vs Real Image Detector API")
 
@@ -33,13 +32,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
-FALLBACK_MODEL_NAME = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+MODEL_NAME = os.getenv("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 CSV_FILE = "prediction_results.csv"
 
 
-class GeminiResponseError(Exception):
+class ModelResponseError(Exception):
     def __init__(self, message, status_code=502):
         super().__init__(message)
         self.message = message
@@ -129,12 +127,12 @@ def clean_json_response(text):
 def normalize_result(result):
     label = str(result.get("label", "")).upper().strip()
     if label not in {"AI_GENERATED", "REAL_IMAGE", "UNCERTAIN"}:
-        raise ValueError("Gemini returned an unknown label.")
+        raise ValueError("Model returned an unknown label.")
 
     try:
         confidence = float(result["confidence"])
     except (TypeError, ValueError):
-        raise ValueError("Gemini returned an invalid confidence score.")
+        raise ValueError("Model returned an invalid confidence score.")
 
     confidence = max(0.0, min(confidence, 1.0))
 
@@ -163,52 +161,67 @@ def save_result_to_csv(filename, result):
             result.get("model_used")
         ])
 
-def classify_image(image: Image.Image, max_retries=4):
+def image_to_data_url(image: Image.Image):
     image = image.convert("RGB")
     image.thumbnail((768, 768))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    encoded_image = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    return f"data:image/jpeg;base64,{encoded_image}"
 
-    models_to_try = [MODEL_NAME, FALLBACK_MODEL_NAME]
 
-    for model_name in models_to_try:
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(
-                    model=model_name,
-                    contents=[SYSTEM_PROMPT, image],
-                    config=types.GenerateContentConfig(
-                        response_mime_type="application/json"
-                    )
-                )
-                result = normalize_result(clean_json_response(response.text))
-                return {
-                    "label": result["label"],
-                    "confidence": result["confidence"],
-                    "reason": result["reason"],
-                    "model_used": model_name
-                }
+def classify_image(image: Image.Image, max_retries=4):
+    image_data_url = image_to_data_url(image)
 
-            except ServerError:
-                wait = min((2 ** attempt) + random.uniform(0, 1), 10)
-                time.sleep(wait)
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": SYSTEM_PROMPT},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_data_url}
+                            }
+                        ]
+                    }
+                ],
+                temperature=0,
+                max_completion_tokens=500,
+                response_format={"type": "json_object"}
+            )
+            response_text = response.choices[0].message.content
+            result = normalize_result(clean_json_response(response_text))
+            return {
+                "label": result["label"],
+                "confidence": result["confidence"],
+                "reason": result["reason"],
+                "model_used": MODEL_NAME
+            }
 
-            except ClientError as e:
-                error_text = str(e)
-                if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-                    raise GeminiResponseError(
-                        "Gemini quota limit reached. Please wait and try again later.",
-                        status_code=429
-                    )
-                else:
-                    raise GeminiResponseError(f"Gemini client/API error: {e}")
+        except RateLimitError:
+            raise ModelResponseError(
+                "Groq rate limit reached. Please wait and try again later.",
+                status_code=429
+            )
 
-            except (json.JSONDecodeError, ValueError):
-                if attempt == max_retries - 1:
-                    break
-                wait = min((2 ** attempt) + random.uniform(0, 1), 10)
-                time.sleep(wait)
+        except APIError as e:
+            if attempt == max_retries - 1:
+                raise ModelResponseError(f"Groq API error: {e}")
+            wait = min((2 ** attempt) + random.uniform(0, 1), 10)
+            time.sleep(wait)
 
-    raise GeminiResponseError(
-        "Gemini did not return a valid classification response after retries."
+        except (json.JSONDecodeError, ValueError):
+            if attempt == max_retries - 1:
+                break
+            wait = min((2 ** attempt) + random.uniform(0, 1), 10)
+            time.sleep(wait)
+
+    raise ModelResponseError(
+        "Groq did not return a valid classification response after retries."
     )
 
 
@@ -226,7 +239,7 @@ async def predict(file: UploadFile = File(...)):
     image = Image.open(io.BytesIO(image_bytes))
     try:
         result = classify_image(image)
-    except GeminiResponseError as e:
+    except ModelResponseError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
 
     save_result_to_csv(file.filename, result)
