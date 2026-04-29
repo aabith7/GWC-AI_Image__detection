@@ -31,7 +31,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MODEL_NAME = "models/gemini-2.5-flash"
+MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+FALLBACK_MODEL_NAME = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
+
 CSV_FILE = "prediction_results.csv"
 
 SYSTEM_PROMPT = """
@@ -123,55 +125,57 @@ def save_result_to_csv(filename, result):
             result.get("model_used")
         ])
 
-
-def classify_image(image: Image.Image, max_retries=2):
+def classify_image(image: Image.Image, max_retries=4):
     image = image.convert("RGB")
     image.thumbnail((768, 768))
 
-    for attempt in range(max_retries):
-        try:
-            response = client.models.generate_content(
-                model=MODEL_NAME,
-                contents=[SYSTEM_PROMPT, image]
-            )
-            result = clean_json_response(response.text)
-            return {
-                "label": result.get("label", "UNCERTAIN"),
-                "confidence": float(result.get("confidence", 0.0)),
-                "reason": result.get("reason", "No reason provided."),
-                "model_used": MODEL_NAME
-            }
+    models_to_try = [MODEL_NAME, FALLBACK_MODEL_NAME]
 
-        except ServerError:
-            wait = (2 ** attempt) + random.uniform(0, 1)
-            time.sleep(wait)
+    for model_name in models_to_try:
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=[SYSTEM_PROMPT, image]
+                )
+                result = clean_json_response(response.text)
+                return {
+                    "label": result.get("label", "UNCERTAIN"),
+                    "confidence": float(result.get("confidence", 0.0)),
+                    "reason": result.get("reason", "No reason provided."),
+                    "model_used": model_name
+                }
 
-        except ClientError as e:
-            error_text = str(e)
-            if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-                reason = "Gemini quota limit reached. Please wait and try again later."
-            else:
-                reason = f"Gemini client/API error: {e}"
-            return {
-                "label": "UNCERTAIN",
-                "confidence": 0.0,
-                "reason": reason,
-                "model_used": MODEL_NAME
-            }
+            except ServerError:
+                wait = min((2 ** attempt) + random.uniform(0, 1), 10)
+                time.sleep(wait)
 
-        except json.JSONDecodeError:
-            return {
-                "label": "UNCERTAIN",
-                "confidence": 0.0,
-                "reason": "Gemini did not return valid JSON.",
-                "model_used": MODEL_NAME
-            }
+            except ClientError as e:
+                error_text = str(e)
+                if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
+                    reason = "Gemini quota limit reached. Please wait and try again later."
+                else:
+                    reason = f"Gemini client/API error: {e}"
+                return {
+                    "label": "UNCERTAIN",
+                    "confidence": 0.0,
+                    "reason": reason,
+                    "model_used": model_name
+                }
+
+            except json.JSONDecodeError:
+                return {
+                    "label": "UNCERTAIN",
+                    "confidence": 0.0,
+                    "reason": "Gemini did not return valid JSON.",
+                    "model_used": model_name
+                }
 
     return {
         "label": "UNCERTAIN",
         "confidence": 0.0,
-        "reason": "Gemini server overloaded after retries.",
-        "model_used": MODEL_NAME
+        "reason": "Gemini server overloaded. Please try again in a few minutes.",
+        "model_used": f"{MODEL_NAME}, fallback: {FALLBACK_MODEL_NAME}"
     }
 
 
