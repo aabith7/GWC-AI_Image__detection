@@ -8,12 +8,13 @@
   --green: #34d399;
   --yellow: #fbbf24;
   --red: #f87171;
+  --purple: #a78bfa;
   --text: #e2e8f0;
   --muted: #64748b;
-  --label-ai: #f87171;
-  --label-likely-ai: #fbbf24;
-  --label-likely-real: #34d399;
-  --label-uncertain: #818cf8;
+  --label-ai: #ff4d5e;
+  --label-likely-ai: #ff4d5e;
+  --label-likely-real: #22c55e;
+  --label-uncertain: #38bdf8;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -58,22 +59,25 @@ header {
   font-family: 'Syne', sans-serif;
   font-weight: 800;
   font-size: 20px;
-  letter-spacing: -0.02em;
-  color: var(--text);
+  letter-spacing: 0;
+  color: #ffffff;
 }
 
 .logo-icon {
   width: 36px;
   height: 36px;
-  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  background: linear-gradient(135deg, #60a5fa, var(--purple));
   border-radius: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 16px;
+  color: #ffffff;
 }
 
-.logo span { color: var(--accent); }
+.logo span {
+  color: var(--purple);
+}
 
 .header-badge {
   font-size: 11px;
@@ -475,10 +479,13 @@ main {
 
 .verdict-label {
   font-family: 'Syne', sans-serif;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 800;
   color: var(--verdict-color, var(--text));
-  letter-spacing: -0.01em;
+  letter-spacing: 0;
+  line-height: 1;
+  text-transform: uppercase;
+  font-style: italic;
 }
 
 .verdict-badge {
@@ -488,9 +495,9 @@ main {
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  background: rgba(56,189,248,0.12);
+  background: color-mix(in srgb, var(--verdict-color, var(--accent)) 18%, transparent);
   color: var(--verdict-color, var(--accent));
-  border: 1px solid rgba(56,189,248,0.2);
+  border: 1px solid color-mix(in srgb, var(--verdict-color, var(--accent)) 35%, transparent);
 }
 
 /* Confidence meter */
