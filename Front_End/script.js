@@ -1,4 +1,4 @@
-const API_URL = "http://127.0.0.1:8000/predict";
+const API_URL = "https://gwc-ai-image-detection-1.onrender.com/predict";
 
 const dropZone     = document.getElementById("dropZone");
 const fileInput    = document.getElementById("fileInput");
