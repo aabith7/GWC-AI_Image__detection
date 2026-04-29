@@ -139,13 +139,13 @@ function showResult(data, filename, elapsed) {
   }, 80);
 }
 
-function showError(message) {
+function showError(title, message) {
   loadingState.classList.remove("visible");
   resultState.classList.remove("visible");
   scanOverlay.classList.remove("active");
 
   emptyState.style.display = "flex";
-  emptyState.querySelector(".empty-text").textContent = "Connection failed";
+  emptyState.querySelector(".empty-text").textContent = title;
   emptyState.querySelector(".empty-hint").textContent = message;
 }
 
@@ -172,7 +172,14 @@ async function analyzeImage() {
     });
 
     if (!response.ok) {
-      throw new Error("Server responded with " + response.status);
+      let message = "Server responded with " + response.status;
+      try {
+        const errorData = await response.json();
+        message = errorData.detail || message;
+      } catch (parseError) {
+        console.warn("Could not parse error response:", parseError);
+      }
+      throw new Error(message);
     }
 
     const data = await response.json();
@@ -181,9 +188,8 @@ async function analyzeImage() {
     showResult(data.result, data.filename, elapsed);
   } catch (error) {
     showError(
-      "Could not reach the API at " +
-        API_URL +
-        ". Make sure your FastAPI server is running."
+      "Gemini error",
+      error.message || "Gemini did not return a usable response. Please try again."
     );
     console.error("API error:", error);
   } finally {

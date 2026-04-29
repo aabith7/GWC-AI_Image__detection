@@ -6,7 +6,7 @@ import io
 import re
 from PIL import Image
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
 from google.genai import types
@@ -37,6 +37,13 @@ MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 FALLBACK_MODEL_NAME = os.getenv("GEMINI_FALLBACK_MODEL", "gemini-2.5-flash-lite")
 
 CSV_FILE = "prediction_results.csv"
+
+
+class GeminiResponseError(Exception):
+    def __init__(self, message, status_code=502):
+        super().__init__(message)
+        self.message = message
+        self.status_code = status_code
 
 SYSTEM_PROMPT = """
 You are an expert image authenticity and digital forensics assistant.
@@ -120,21 +127,21 @@ def clean_json_response(text):
 
 
 def normalize_result(result):
-    label = str(result.get("label", "UNCERTAIN")).upper().strip()
+    label = str(result.get("label", "")).upper().strip()
     if label not in {"AI_GENERATED", "REAL_IMAGE", "UNCERTAIN"}:
-        label = "UNCERTAIN"
+        raise ValueError("Gemini returned an unknown label.")
 
     try:
-        confidence = float(result.get("confidence", 0.0))
+        confidence = float(result["confidence"])
     except (TypeError, ValueError):
-        confidence = 0.0
+        raise ValueError("Gemini returned an invalid confidence score.")
 
     confidence = max(0.0, min(confidence, 1.0))
 
     return {
         "label": label,
         "confidence": confidence,
-        "reason": result.get("reason", "No reason provided.")
+        "reason": str(result.get("reason", "")).strip()
     }
 
 
@@ -187,28 +194,22 @@ def classify_image(image: Image.Image, max_retries=4):
             except ClientError as e:
                 error_text = str(e)
                 if "429" in error_text or "RESOURCE_EXHAUSTED" in error_text:
-                    reason = "Gemini quota limit reached. Please wait and try again later."
+                    raise GeminiResponseError(
+                        "Gemini quota limit reached. Please wait and try again later.",
+                        status_code=429
+                    )
                 else:
-                    reason = f"Gemini client/API error: {e}"
-                return {
-                    "label": "UNCERTAIN",
-                    "confidence": 0.0,
-                    "reason": reason,
-                    "model_used": model_name
-                }
+                    raise GeminiResponseError(f"Gemini client/API error: {e}")
 
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 if attempt == max_retries - 1:
                     break
                 wait = min((2 ** attempt) + random.uniform(0, 1), 10)
                 time.sleep(wait)
 
-    return {
-        "label": "UNCERTAIN",
-        "confidence": 0.0,
-        "reason": "Gemini did not return valid JSON after retries. Please try again.",
-        "model_used": f"{MODEL_NAME}, fallback: {FALLBACK_MODEL_NAME}"
-    }
+    raise GeminiResponseError(
+        "Gemini did not return a valid classification response after retries."
+    )
 
 
 @app.get("/")
@@ -223,7 +224,11 @@ def home():
 async def predict(file: UploadFile = File(...)):
     image_bytes = await file.read()
     image = Image.open(io.BytesIO(image_bytes))
-    result = classify_image(image)
+    try:
+        result = classify_image(image)
+    except GeminiResponseError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.message)
+
     save_result_to_csv(file.filename, result)
     return {
         "filename": file.filename,
