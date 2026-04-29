@@ -2,29 +2,27 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>GWC — AI Image Detector</title>
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GWC - AI Image Detector</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-
   <header>
     <div class="logo">
-      <div class="logo-icon">🔍</div>
+      <div class="logo-icon">AI</div>
       GWC<span>AI Detector</span>
     </div>
     <div class="header-badge">AI FORENSICS v1.0</div>
   </header>
 
   <main>
-    <!-- LEFT: Upload -->
     <div class="left-panel">
       <div class="panel-label">Image Input</div>
 
       <div class="drop-zone" id="dropZone">
         <div class="drop-placeholder" id="placeholder">
-          <div class="drop-icon">🖼️</div>
+          <div class="drop-icon">IMG</div>
           <div class="drop-title">Drop image here</div>
           <div class="drop-sub">or click to browse files</div>
           <div class="drop-formats">
@@ -34,9 +32,9 @@
             <span class="fmt-tag">GIF</span>
           </div>
         </div>
-        <img id="previewImg" style="display:none" alt="Preview"/>
+        <img id="previewImg" style="display:none" alt="Preview" />
         <div class="img-overlay" id="imgOverlay">
-          <span class="overlay-text">↑ CHANGE IMAGE</span>
+          <span class="overlay-text">CHANGE IMAGE</span>
         </div>
         <div class="scan-overlay" id="scanOverlay">
           <div class="scan-line"></div>
@@ -46,32 +44,29 @@
       <input type="file" id="fileInput" accept="image/*" />
 
       <div class="file-info" id="fileInfo">
-        <div class="file-icon">📄</div>
+        <div class="file-icon">FILE</div>
         <div class="file-details">
-          <div class="file-name" id="fileName">—</div>
-          <div class="file-size" id="fileSize">—</div>
+          <div class="file-name" id="fileName">-</div>
+          <div class="file-size" id="fileSize">-</div>
         </div>
       </div>
 
       <button class="btn-analyze" id="analyzeBtn" disabled onclick="analyzeImage()">
-        ⚡ &nbsp;Run Analysis
+        Run Analysis
       </button>
     </div>
 
-    <!-- RIGHT: Results -->
     <div class="right-panel">
       <div class="panel-label">Forensic Analysis</div>
 
-      <!-- Empty state -->
       <div class="empty-state" id="emptyState">
-        <div class="empty-icon">🧠</div>
+        <div class="empty-icon">AI</div>
         <div class="empty-text">Awaiting image input</div>
         <div class="empty-hint">
           Upload an image on the left to begin AI authenticity analysis
         </div>
       </div>
 
-      <!-- Loading -->
       <div class="loading-state" id="loadingState">
         <div class="spinner-wrap">
           <div class="spinner"></div>
@@ -79,27 +74,25 @@
         </div>
         <div class="loading-text">ANALYZING</div>
         <div class="loading-steps">
-          <div class="step"><div class="step-dot"></div>Extracting visual features…</div>
-          <div class="step"><div class="step-dot"></div>Checking lighting &amp; edges…</div>
-          <div class="step"><div class="step-dot"></div>Running AI forensics…</div>
+          <div class="step"><div class="step-dot"></div>Extracting visual features...</div>
+          <div class="step"><div class="step-dot"></div>Checking lighting and edges...</div>
+          <div class="step"><div class="step-dot"></div>Running AI forensics...</div>
         </div>
       </div>
 
-      <!-- Result -->
       <div class="result-state" id="resultState">
-
         <div class="verdict-card" id="verdictCard">
           <div class="verdict-top">
             <div class="verdict-label-wrap">
               <div class="verdict-eyebrow">Verdict</div>
-              <div class="verdict-label" id="verdictLabel">—</div>
+              <div class="verdict-label" id="verdictLabel">-</div>
             </div>
-            <div class="verdict-badge" id="verdictBadge">—</div>
+            <div class="verdict-badge" id="verdictBadge">-</div>
           </div>
           <div class="conf-section">
             <div class="conf-header">
               <div class="conf-label">CONFIDENCE SCORE</div>
-              <div class="conf-value" id="confValue">—</div>
+              <div class="conf-value" id="confValue">-</div>
             </div>
             <div class="conf-bar-bg">
               <div class="conf-bar-fill" id="confBar"></div>
@@ -109,7 +102,7 @@
 
         <div class="analysis-card">
           <div class="card-title">Analysis Reason</div>
-          <div class="reason-text" id="reasonText">—</div>
+          <div class="reason-text" id="reasonText">-</div>
         </div>
 
         <div class="analysis-card">
@@ -117,11 +110,22 @@
           <div class="meta-grid">
             <div class="meta-item">
               <div class="meta-key">Filename</div>
-              <div class="meta-val" id="metaFilename">—</div>
+              <div class="meta-val" id="metaFilename">-</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-key">Model</div>
+              <div class="meta-val" id="metaModel">-</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-key">Image Size</div>
+              <div class="meta-val" id="metaSize">-</div>
+            </div>
+            <div class="meta-item">
+              <div class="meta-key">Response Time</div>
+              <div class="meta-val" id="metaTime">-</div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   </main>

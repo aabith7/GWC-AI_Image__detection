@@ -1,48 +1,47 @@
 const API_URL = "https://gwc-ai-image-detection-1.onrender.com/predict";
 
-const dropZone     = document.getElementById("dropZone");
-const fileInput    = document.getElementById("fileInput");
-const placeholder  = document.getElementById("placeholder");
-const previewImg   = document.getElementById("previewImg");
-const imgOverlay   = document.getElementById("imgOverlay");
-const scanOverlay  = document.getElementById("scanOverlay");
-const fileInfo     = document.getElementById("fileInfo");
-const fileName     = document.getElementById("fileName");
-const fileSize     = document.getElementById("fileSize");
-const analyzeBtn   = document.getElementById("analyzeBtn");
+const dropZone = document.getElementById("dropZone");
+const fileInput = document.getElementById("fileInput");
+const placeholder = document.getElementById("placeholder");
+const previewImg = document.getElementById("previewImg");
+const imgOverlay = document.getElementById("imgOverlay");
+const scanOverlay = document.getElementById("scanOverlay");
+const fileInfo = document.getElementById("fileInfo");
+const fileName = document.getElementById("fileName");
+const fileSize = document.getElementById("fileSize");
+const analyzeBtn = document.getElementById("analyzeBtn");
 
-const emptyState   = document.getElementById("emptyState");
+const emptyState = document.getElementById("emptyState");
 const loadingState = document.getElementById("loadingState");
-const resultState  = document.getElementById("resultState");
+const resultState = document.getElementById("resultState");
 
 let currentFile = null;
 
-// Label → CSS variable color
 const LABEL_COLORS = {
-  "AI_GENERATED":        "var(--label-ai)",
-  "LIKELY_AI_GENERATED": "var(--label-likely-ai)",
-  "LIKELY_REAL":         "var(--label-likely-real)",
-  "UNCERTAIN":           "var(--label-uncertain)"
+  AI_GENERATED: "var(--label-ai)",
+  REAL_IMAGE: "var(--label-likely-real)",
+  LIKELY_AI_GENERATED: "var(--label-likely-ai)",
+  LIKELY_REAL: "var(--label-likely-real)",
+  UNCERTAIN: "var(--label-uncertain)"
 };
 
-// Label → human-readable display text
 const LABEL_DISPLAY = {
-  "AI_GENERATED":        "AI Generated",
-  "LIKELY_AI_GENERATED": "Likely AI",
-  "LIKELY_REAL":         "Likely Real",
-  "UNCERTAIN":           "Uncertain"
+  AI_GENERATED: "AI Generated",
+  REAL_IMAGE: "Real Image",
+  LIKELY_AI_GENERATED: "Likely AI",
+  LIKELY_REAL: "Likely Real",
+  UNCERTAIN: "Uncertain"
 };
 
-/* ── File selection ── */
 dropZone.addEventListener("click", () => fileInput.click());
 
-imgOverlay.addEventListener("click", (e) => {
-  e.stopPropagation();
+imgOverlay.addEventListener("click", (event) => {
+  event.stopPropagation();
   fileInput.click();
 });
 
-dropZone.addEventListener("dragover", (e) => {
-  e.preventDefault();
+dropZone.addEventListener("dragover", (event) => {
+  event.preventDefault();
   dropZone.classList.add("dragover");
 });
 
@@ -50,18 +49,18 @@ dropZone.addEventListener("dragleave", () => {
   dropZone.classList.remove("dragover");
 });
 
-dropZone.addEventListener("drop", (e) => {
-  e.preventDefault();
+dropZone.addEventListener("drop", (event) => {
+  event.preventDefault();
   dropZone.classList.remove("dragover");
-  const f = e.dataTransfer.files[0];
-  if (f && f.type.startsWith("image/")) loadFile(f);
+
+  const file = event.dataTransfer.files[0];
+  if (file && file.type.startsWith("image/")) loadFile(file);
 });
 
 fileInput.addEventListener("change", () => {
   if (fileInput.files[0]) loadFile(fileInput.files[0]);
 });
 
-/* ── Load a selected file ── */
 function loadFile(file) {
   currentFile = file;
   const url = URL.createObjectURL(file);
@@ -76,16 +75,13 @@ function loadFile(file) {
   fileInfo.classList.add("visible");
 
   analyzeBtn.disabled = false;
-
-  // Reset right panel to empty state
   showEmpty();
 }
 
-/* ── Helpers ── */
-function formatBytes(b) {
-  if (b < 1024)    return b + " B";
-  if (b < 1048576) return (b / 1024).toFixed(1) + " KB";
-  return (b / 1048576).toFixed(2) + " MB";
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + " KB";
+  return (bytes / 1048576).toFixed(2) + " MB";
 }
 
 function showEmpty() {
@@ -93,8 +89,10 @@ function showEmpty() {
   emptyState.querySelector(".empty-text").textContent = "Awaiting image input";
   emptyState.querySelector(".empty-hint").textContent =
     "Upload an image on the left to begin AI authenticity analysis";
+
   loadingState.classList.remove("visible");
   resultState.classList.remove("visible");
+  scanOverlay.classList.remove("active");
 }
 
 function showLoading() {
@@ -103,12 +101,11 @@ function showLoading() {
   resultState.classList.remove("visible");
   scanOverlay.classList.add("active");
 
-  // Re-trigger step animations by forcing reflow
   const steps = loadingState.querySelectorAll(".step");
-  steps.forEach((s) => {
-    s.style.animation = "none";
-    void s.offsetHeight;
-    s.style.animation = "";
+  steps.forEach((step) => {
+    step.style.animation = "none";
+    void step.offsetHeight;
+    step.style.animation = "";
   });
 }
 
@@ -118,32 +115,45 @@ function showResult(data, filename, elapsed) {
   scanOverlay.classList.remove("active");
   resultState.classList.add("visible");
 
-  const label   = data.label || "UNCERTAIN";
-  const color   = LABEL_COLORS[label] || "var(--accent)";
+  const label = data.label || "UNCERTAIN";
+  const color = LABEL_COLORS[label] || "var(--accent)";
   const display = LABEL_DISPLAY[label] || label;
-  const conf    = parseFloat(data.confidence) || 0;
+  const confidence = parseFloat(data.confidence) || 0;
 
-  // Apply verdict color to the card via CSS variable
   const card = document.getElementById("verdictCard");
   card.style.setProperty("--verdict-color", color);
 
-  document.getElementById("verdictLabel").textContent = display;
-  document.getElementById("verdictBadge").textContent = label.replace(/_/g, " ");
-  document.getElementById("confValue").textContent    = (conf * 100).toFixed(1) + "%";
+  setText("verdictLabel", display);
+  setText("verdictBadge", label.replace(/_/g, " "));
+  setText("confValue", (confidence * 100).toFixed(1) + "%");
+  setText("reasonText", data.reason || "No reason provided.");
+  setText("metaFilename", filename || "-");
+  setText("metaModel", (data.model_used || "-").replace("models/", ""));
+  setText("metaSize", fileSize.textContent);
+  setText("metaTime", elapsed + " ms");
 
-  // Animate confidence bar
   const bar = document.getElementById("confBar");
   bar.style.width = "0%";
-  setTimeout(() => { bar.style.width = (conf * 100) + "%"; }, 80);
-
-  document.getElementById("reasonText").textContent  = data.reason || "No reason provided.";
-  document.getElementById("metaFilename").textContent = filename;
-  document.getElementById("metaModel").textContent   = (data.model_used || "—").replace("models/", "");
-  document.getElementById("metaSize").textContent    = fileSize.textContent;
-  document.getElementById("metaTime").textContent    = elapsed + " ms";
+  setTimeout(() => {
+    bar.style.width = confidence * 100 + "%";
+  }, 80);
 }
 
-/* ── Main analysis call ── */
+function showError(message) {
+  loadingState.classList.remove("visible");
+  resultState.classList.remove("visible");
+  scanOverlay.classList.remove("active");
+
+  emptyState.style.display = "flex";
+  emptyState.querySelector(".empty-text").textContent = "Connection failed";
+  emptyState.querySelector(".empty-hint").textContent = message;
+}
+
+function setText(id, value) {
+  const element = document.getElementById(id);
+  if (element) element.textContent = value;
+}
+
 async function analyzeImage() {
   if (!currentFile) return;
 
@@ -153,7 +163,7 @@ async function analyzeImage() {
   const formData = new FormData();
   formData.append("file", currentFile);
 
-  const t0 = Date.now();
+  const startedAt = Date.now();
 
   try {
     const response = await fetch(API_URL, {
@@ -162,24 +172,20 @@ async function analyzeImage() {
     });
 
     if (!response.ok) {
-      throw new Error(`Server responded with ${response.status}`);
+      throw new Error("Server responded with " + response.status);
     }
 
-    const data    = await response.json();
-    const elapsed = Date.now() - t0;
+    const data = await response.json();
+    const elapsed = Date.now() - startedAt;
 
     showResult(data.result, data.filename, elapsed);
-
-  } catch (err) {
-    loadingState.classList.remove("visible");
-    scanOverlay.classList.remove("active");
-
-    emptyState.style.display = "flex";
-    emptyState.querySelector(".empty-text").textContent = "Connection failed";
-    emptyState.querySelector(".empty-hint").textContent =
-      "Could not reach the API at " + API_URL + ". Make sure your FastAPI server is running.";
-
-    console.error("API error:", err);
+  } catch (error) {
+    showError(
+      "Could not reach the API at " +
+        API_URL +
+        ". Make sure your FastAPI server is running."
+    );
+    console.error("API error:", error);
   } finally {
     analyzeBtn.disabled = false;
   }
