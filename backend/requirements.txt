@@ -3,4 +3,4 @@ uvicorn
 python-multipart
 pillow
 python-dotenv
-google-genai.gitignore
+google-genai
