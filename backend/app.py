@@ -3,11 +3,13 @@ import json
 import time
 import random
 import io
+import re
 from PIL import Image
 from dotenv import load_dotenv
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from google import genai
+from google.genai import types
 from google.genai.errors import ServerError, ClientError
 import csv
 from datetime import datetime
@@ -99,12 +101,41 @@ JSON format:
 
 
 def clean_json_response(text):
+    if not text:
+        raise json.JSONDecodeError("Empty response", "", 0)
+
     text = text.strip()
     if text.startswith("```json"):
         text = text.replace("```json", "").replace("```", "").strip()
     elif text.startswith("```"):
         text = text.replace("```", "").strip()
-    return json.loads(text)
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", text, re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
+
+
+def normalize_result(result):
+    label = str(result.get("label", "UNCERTAIN")).upper().strip()
+    if label not in {"AI_GENERATED", "REAL_IMAGE", "UNCERTAIN"}:
+        label = "UNCERTAIN"
+
+    try:
+        confidence = float(result.get("confidence", 0.0))
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    confidence = max(0.0, min(confidence, 1.0))
+
+    return {
+        "label": label,
+        "confidence": confidence,
+        "reason": result.get("reason", "No reason provided.")
+    }
 
 
 def save_result_to_csv(filename, result):
@@ -136,13 +167,16 @@ def classify_image(image: Image.Image, max_retries=4):
             try:
                 response = client.models.generate_content(
                     model=model_name,
-                    contents=[SYSTEM_PROMPT, image]
+                    contents=[SYSTEM_PROMPT, image],
+                    config=types.GenerateContentConfig(
+                        response_mime_type="application/json"
+                    )
                 )
-                result = clean_json_response(response.text)
+                result = normalize_result(clean_json_response(response.text))
                 return {
-                    "label": result.get("label", "UNCERTAIN"),
-                    "confidence": float(result.get("confidence", 0.0)),
-                    "reason": result.get("reason", "No reason provided."),
+                    "label": result["label"],
+                    "confidence": result["confidence"],
+                    "reason": result["reason"],
                     "model_used": model_name
                 }
 
@@ -164,17 +198,15 @@ def classify_image(image: Image.Image, max_retries=4):
                 }
 
             except json.JSONDecodeError:
-                return {
-                    "label": "UNCERTAIN",
-                    "confidence": 0.0,
-                    "reason": "Gemini did not return valid JSON.",
-                    "model_used": model_name
-                }
+                if attempt == max_retries - 1:
+                    break
+                wait = min((2 ** attempt) + random.uniform(0, 1), 10)
+                time.sleep(wait)
 
     return {
         "label": "UNCERTAIN",
         "confidence": 0.0,
-        "reason": "Gemini server overloaded. Please try again in a few minutes.",
+        "reason": "Gemini did not return valid JSON after retries. Please try again.",
         "model_used": f"{MODEL_NAME}, fallback: {FALLBACK_MODEL_NAME}"
     }
 
